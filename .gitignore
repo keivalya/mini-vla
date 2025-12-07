@@ -2,3 +2,5 @@ data/
 __pycache__/
 MUJOCO_LOG.txt
 LIBERO/
+videos*/
+checkpoints/

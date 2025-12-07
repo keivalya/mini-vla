@@ -15,4 +15,4 @@ class FusionMLP(nn.Module):
         x = torch.cat([img_token, txt_token, state_token], dim=-1)
         x = self.net(x)
         x = self.ln(x)
-        return x  # fused_context
+        return x  # fused context

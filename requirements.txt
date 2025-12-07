@@ -6,7 +6,7 @@ datasets
 # simulation
 gymnasium
 mujoco # or mujoco==3.x
-gymnasium-robotics[mujoco-py]
+metaworld
 
 # data / image utils
 opencv-python

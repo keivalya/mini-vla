@@ -31,7 +31,7 @@ class TextEncoderTinyGRU(nn.Module):
     def forward(self, token_ids):
         x = self.embed(token_ids)  # (B, T, d_word)
         _, h_last = self.gru(x)
-        x = h_last[0]       # (B, d_model)
+        x = h_last[0]  # (B, d_model)
         x = self.ln(x)
         return x
 

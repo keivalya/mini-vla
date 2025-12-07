@@ -9,12 +9,18 @@ class SimpleTokenizer:
             self.vocab = vocab
 
     def build_from_texts(self, texts):
+        """
+        Build the vocabulary from a list of texts.
+        """
         for txt in texts:
             for tok in txt.lower().split():
                 if tok not in self.vocab:
                     self.vocab[tok] = len(self.vocab)
 
     def encode(self, text):
+        """
+        Encode a text into a list of ids.
+        """
         toks = text.lower().split()
         ids = [self.vocab.get(t, self.vocab[self.unk_token]) for t in toks]
         return ids

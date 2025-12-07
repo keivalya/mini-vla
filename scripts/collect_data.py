@@ -1,113 +1,118 @@
+"""Collect demonstration data from Meta-World MT1 environments using expert policies"""
+
 import os
-import numpy as np
-import torch
-
-from envs.robot_kitchen_env import RobotKitchenWrapper
-from utils.tokenizer import SimpleTokenizer
-
-
-def scripted_expert_policy(state, target_qpos, action_dim):
-    """
-    Very simple proportional controller in joint-space.
-
-    state:        vector; first k dims = joint positions
-    target_qpos:  (k,) target joint angles (e.g., k=7)
-    action_dim:   full env action_dim (e.g., 9 for FrankaKitchen)
-
-    Returns: (action_dim,) action vector.
-    """
-    k = target_qpos.shape[0]
-    q = state[:k]
-    error = target_qpos - q
-    Kp = 1.0
-    u = Kp * error  # (k,)
-
-    # Pad or trim to match env.action_dim
-    if action_dim > k:
-        pad = np.zeros(action_dim - k, dtype=np.float32)
-        action = np.concatenate([u.astype(np.float32), pad], axis=-1)
-    else:
-        action = u.astype(np.float32)[:action_dim]
-
-    return action
-
 import argparse
+import time
+import numpy as np
+import gymnasium as gym
+import metaworld
+from metaworld.policies import ENV_POLICY_MAP
+from utils.tokenizer import SimpleTokenizer
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--env-id", type=str, default="FrankaKitchen-v1")
-    parser.add_argument("--output-path", type=str,
-                        default="data/kitchen_imitation_dataset.npz")
-    parser.add_argument("--episodes-per-task", type=int, default=20)
-    parser.add_argument("--max-steps", type=int, default=100)
+    parser.add_argument("--env-name", type=str, default="push-v3")
+    parser.add_argument("--camera-name", type=str, default="topview",
+                        help="Meta-World camera: corner, corner2, corner3, corner4, topview, behindGripper, gripperPOV")
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--episodes", type=int, default=50)
+    parser.add_argument("--max-steps", type=int, default=150)
+    parser.add_argument("--output-path", type=str, default="data/metaworld_bc.npz")
+    parser.add_argument("--sleep", type=float, default=0.0,
+                        help="Optional sleep between steps for visualization (seconds)")
+    parser.add_argument("--instruction", type=str, default="push the object to the goal",
+                        help="Fixed instruction for all episodes")
     return parser.parse_args()
+
+
+def extract_state(obs):
+    """
+    Meta-World MT1 observations are already flat numpy arrays.
+    """
+    return np.asarray(obs, dtype=np.float32).ravel()
 
 
 def main():
     args = parse_args()
-    env = RobotKitchenWrapper(env_id=args.env_id)
-    action_dim = env.action_dim
     os.makedirs(os.path.dirname(args.output_path), exist_ok=True)
-    tasks = [
-        {"name": "open_microwave", "instruction": "open the microwave",
-         "target_qpos": np.array([0.0, -0.5, 0.1, -1.2, 0.0, 0.8, 0.0], dtype=np.float32)},
-        {"name": "turn_knob", "instruction": "turn the knob",
-         "target_qpos": np.array([0.3, -0.2, 0.0, -1.0, 0.1, 0.5, 0.0], dtype=np.float32)},
-    ]
 
-    tokenizer = SimpleTokenizer(vocab=None)  # build from tasks or corpus
-    all_images = []
-    all_states = []
-    all_actions = []
-    all_text_ids = []
+    env = gym.make(
+        "Meta-World/MT1",
+        env_name=args.env_name,
+        seed=args.seed,
+        render_mode="rgb_array", # gives images
+        camera_name=args.camera_name,
+    )
 
-    num_episodes_per_task = 20
-    max_steps = 100
+    obs, info = env.reset(seed=args.seed)
+    policy = ENV_POLICY_MAP[args.env_name]()
 
-    for task in tasks:
-        instr = task["instruction"]
-        target_qpos = task["target_qpos"]
-        text_ids = tokenizer.encode(instr)  # e.g. List[int]
+    images = []
+    states = []
+    actions = []
+    texts = []
 
-        for ep in range(num_episodes_per_task):
-            img, state, _ = env.reset()
-            done = False
-            step = 0
+    # fixed instruction for this dataset
+    instruction = args.instruction
 
-            while not done and step < max_steps:
-                action = scripted_expert_policy(state, target_qpos, action_dim)
-                img_next, state_next, reward, done, info = env.step(action)
+    for ep in range(args.episodes):
+        obs, info = env.reset()
+        done = False
+        steps = 0
 
-                all_images.append(img)        # current image
-                all_states.append(state)
-                all_actions.append(action)
-                all_text_ids.append(text_ids)
+        while not done and steps < args.max_steps:
+            # expert policy action on raw obs
+            action = policy.get_action(obs)  # shape (action_dim,)
 
-                img = img_next
-                state = state_next
-                step += 1
+            # log current transition
+            img = env.render() # (H, W, 3) uint8
+            state = extract_state(obs) # (state_dim,)
+
+            images.append(img.copy())
+            states.append(state.copy())
+            actions.append(np.asarray(action, dtype=np.float32).copy())
+            texts.append(instruction)
+
+            # step env
+            obs, reward, truncate, terminate, info = env.step(action)
+            done = bool(truncate or terminate) or (int(info.get("success", 0)) == 1)
+            steps += 1
+
+            if args.sleep > 0:
+                time.sleep(args.sleep)
+
+        print(f"Episode {ep+1}/{args.episodes} finished after {steps} steps, success={int(info.get('success', 0))}")
 
     env.close()
 
-    # Pad text sequences to fixed length
-    max_len = max(len(t) for t in all_text_ids)
-    text_ids_padded = np.zeros((len(all_text_ids), max_len), dtype=np.int64)
-    for i, seq in enumerate(all_text_ids):
-        text_ids_padded[i, :len(seq)] = np.array(seq, dtype=np.int64)
+    # stack arrays
+    images = np.stack(images, axis=0)   # (N, H, W, 3)
+    states = np.stack(states, axis=0)   # (N, state_dim)
+    actions = np.stack(actions, axis=0) # (N, action_dim)
 
-    images = np.stack(all_images, axis=0)          # (N, H, W, 3)
-    states = np.stack(all_states, axis=0).astype(np.float32)
-    actions = np.stack(all_actions, axis=0).astype(np.float32)
+    # tokenize instructions
+    tokenizer = SimpleTokenizer(vocab=None)
+    tokenizer.build_from_texts(texts)
+    text_ids_list = [tokenizer.encode(t) for t in texts]
+    max_len = max(len(seq) for seq in text_ids_list)
+    text_ids = np.zeros((len(texts), max_len), dtype=np.int64)
+    for i, seq in enumerate(text_ids_list):
+        text_ids[i, :len(seq)] = np.array(seq, dtype=np.int64)
 
     np.savez_compressed(
         args.output_path,
         images=images,
         states=states,
         actions=actions,
-        text_ids=text_ids_padded,
-        vocab=tokenizer.vocab
+        text_ids=text_ids,
+        vocab=tokenizer.vocab,
     )
-    print("Saved dataset with", images.shape[0], "samples to", args.output_path)
+
+    print("Saved Meta-World push dataset to", args.output_path)
+    print("  images:", images.shape)
+    print("  states:", states.shape)
+    print("  actions:", actions.shape)
+    print("  text_ids:", text_ids.shape)
 
 
 if __name__ == "__main__":

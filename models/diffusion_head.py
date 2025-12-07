@@ -7,14 +7,20 @@ import torch.nn.functional as F
 
 @dataclass
 class DiffusionConfig:
-    T: int = 16               # number of diffusion steps (small!)
+    T: int = 16  # number of diffusion steps
     beta_start: float = 1e-4
     beta_end: float = 1e-2
-    action_dim: int = 7       # adjust for your robot
-    cond_dim: int = 128       # same as d_model
+    action_dim: int = 4
+    cond_dim: int = 128 # conditional input dim
 
 
 def make_beta_schedule(cfg: DiffusionConfig):
+    """
+    Compute a schedule for linear beta values from beta_start to beta_end.
+
+    param cfg: A DiffusionConfig object containing the diffusion hyperparameters.
+    return: A tuple of tensors containing the beta values, alpha values and alpha bar values.
+    """
     betas = torch.linspace(cfg.beta_start, cfg.beta_end, cfg.T)
     alphas = 1.0 - betas
     alpha_bar = torch.cumprod(alphas, dim=0)
@@ -75,7 +81,7 @@ class ActionDenoiseModel(nn.Module):
         t:   (B,)
         cond: (B, cond_dim)
         """
-        t_emb = self.time_emb(t)            # (B, time_emb_dim)
+        t_emb = self.time_emb(t)  # (B, time_emb_dim)
         x = torch.cat([x_t, t_emb, cond], dim=-1)
         eps_pred = self.net(x)
         return eps_pred
@@ -108,8 +114,7 @@ class DiffusionPolicyHead(nn.Module):
         """
         B = actions.size(0)
         device = actions.device
-        # sample t uniformly [0, T-1]
-        t = torch.randint(0, self.cfg.T, (B,), device=device)
+        t = torch.randint(0, self.cfg.T, (B,), device=device) # uniform sampling t
         noise = torch.randn_like(actions)
         x_t = self.q_sample(actions, t, noise)  # noisy actions
         eps_pred = self.denoise_model(x_t, t, cond)
@@ -136,11 +141,13 @@ class DiffusionPolicyHead(nn.Module):
             alpha_t = self.alphas[t_step]
             alpha_bar_t = self.alpha_bar[t_step]
 
-            # Reverse diffusion (simplified DDPM)
-            x0_pred = (x_t - torch.sqrt(1 - alpha_bar_t) * eps_pred) / torch.sqrt(alpha_bar_t)
+            # now reverse diffusion  (aka DDPM)
+            # mean = (1 / torch.sqrt(alpha_t)) * (x_t - beta_t / torch.sqrt(1 - alpha_bar_t) * eps_pred) # original
+            x0_pred = (x_t - torch.sqrt(1 - alpha_bar_t) * eps_pred) / torch.sqrt(alpha_bar_t) # simplified
             if t_step > 0:
                 noise = torch.randn_like(x_t)
+                # x_t = mean + torch.sqrt(beta_t) * noise # original
                 x_t = torch.sqrt(alpha_t) * x0_pred + torch.sqrt(beta_t) * noise
             else:
-                x_t = x0_pred
+                x_t = x0_pred # x0_pred or mean
         return x_t
