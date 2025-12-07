@@ -16,4 +16,4 @@ tqdm
 
 # video deps
 imageio
-imageio-ffmpeg
+imageio[ffmpeg]
