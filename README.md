@@ -10,7 +10,7 @@ mini-VLA is a minimal, beginner-friendly Vision-Language-Action (VLA) model desi
   <img src="./assets/corner2_push.gif" alt="push the object to the goal">
 </div>
 
-This project intentionally keeps the codebase small (≈150–200 LOC for the core model) so that,
+This project intentionally keeps the codebase small (~150 LOC for the core model) so that,
 - beginners can understand the complete VLA training and exec pipeline
 - researchers can rapidly prototype new ideas around this
 - students can learn diffusion-based action generation w/o heavy dependencies
