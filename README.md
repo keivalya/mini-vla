@@ -15,6 +15,11 @@ This project intentionally keeps the codebase small (~150 LOC for the core model
 - researchers can rapidly prototype new ideas around this
 - students can learn diffusion-based action generation w/o heavy dependencies
 
+> [!TIP]
+> I recommend reading the following blogs to get started with mini-VLA implementation.
+> [Building Vision-Language-Action Model from scratch (Basics)](https://open.substack.com/pub/keivalya/p/building-vision-language-action-from?utm_campaign=post-expanded-share&utm_medium=web)
+> [Building VLA models from scratch — II (Math, Code, and Intuition)](https://medium.com/@keivalyap/building-vla-models-from-scratch-ii-0180020dbc85)
+
 This project is not meant to be state-of-the-art instead, it provides a clear, hackable template for understanding VLA design.
 
 The mini-VLA model core is mainly four files: [models/encoders.py](models/encoders.py) contains encoders for images, text and states corresponding to the robot, [models/fusion.py](models/fusion.py) simply combines vision-language-action embeddings using an MLP (yeah, not ideal but simple and it works OKAY), [models/diffusion_head.py](models/diffusion_head.py) generates action using diffusion policy, and [models/vla_diffusion_policy.py](models/vla_diffusion_policy.py) combines everything!
