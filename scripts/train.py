@@ -7,6 +7,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 
 from models.vla_diffusion_policy import VLADiffusionPolicy
+from models.vision.registry import VisionEncoderCfg
 
 
 class TrainingDataset(Dataset):
@@ -54,6 +55,16 @@ def parse_args():
                         default="checkpoints/model.pt")
     parser.add_argument("--device", type=str, default="cuda",
                         help="'cuda' or 'cpu'")
+
+    # vision command-line arguments
+    parser.add_argument("--vision-name", type=str, default="tinycnn",
+                    help="tinycnn | hf_clip_vit | hf_siglip_vit")
+    parser.add_argument("--vision-pretrained", type=str, default=None,
+                    help="HF model id override (optional)")
+    parser.add_argument("--vision-trainable", action="store_true",
+                    help="If set, HF backbone is trainable")
+    parser.add_argument("--vision-image-size", type=int, default=None,
+                    help="Override vision encoder image size (e.g. 224)")
     return parser.parse_args()
 
 
@@ -67,12 +78,21 @@ def main():
     state_dim = dataset.states.shape[1]
     action_dim = dataset.actions.shape[1]
 
+    vision_cfg = VisionEncoderCfg(
+        name=args.vision_name,
+        d_model=args.d_model,
+        pretrained=args.vision_pretrained,
+        trainable=args.vision_trainable,
+        image_size=args.vision_image_size,
+    )
+
     model = VLADiffusionPolicy(
         vocab_size=vocab_size,
         state_dim=state_dim,
         action_dim=action_dim,
         d_model=args.d_model,
-        diffusion_T=args.diffusion_T
+        diffusion_T=args.diffusion_T,
+        vision_cfg=vision_cfg,
     ).to(device)
 
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
@@ -107,6 +127,13 @@ def main():
             "action_dim": action_dim,
             "d_model": args.d_model,
             "diffusion_T": args.diffusion_T,
+            "vision_cfg": {
+                "name": vision_cfg.name,
+                "d_model": vision_cfg.d_model,
+                "pretrained": vision_cfg.pretrained,
+                "trainable": vision_cfg.trainable,
+                "image_size": vision_cfg.image_size,
+            },
         },
         args.save_path,
     )

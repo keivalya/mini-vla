@@ -1,4 +1,4 @@
-from torch.nn import nn
+import torch.nn as nn
 import torch.nn.functional as F
 
 from .registry import VisionEncoder, VisionEncoderCfg, register_vision_encoder

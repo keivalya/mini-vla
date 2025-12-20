@@ -9,6 +9,7 @@ import imageio.v2 as imageio
 from envs.metaworld_env import MetaWorldMT1Wrapper
 from models.vla_diffusion_policy import VLADiffusionPolicy
 from utils.tokenizer import SimpleTokenizer
+from models.vision.registry import VisionEncoderCfg
 
 
 def parse_args():
@@ -80,6 +81,10 @@ def load_model_and_tokenizer(checkpoint_path: str, device: torch.device):
     d_model = ckpt["d_model"]
     diffusion_T = ckpt["diffusion_T"]
 
+    vision_cfg = None
+    if "vision_cfg" in ckpt:
+        vision_cfg = VisionEncoderCfg(**ckpt["vision_cfg"])
+
     vocab_size = max(vocab.values()) + 1
 
     model = VLADiffusionPolicy(
@@ -88,6 +93,7 @@ def load_model_and_tokenizer(checkpoint_path: str, device: torch.device):
         action_dim=action_dim,
         d_model=d_model,
         diffusion_T=diffusion_T,
+        vision_cfg=vision_cfg,
     ).to(device)
 
     model.load_state_dict(ckpt["model_state_dict"])

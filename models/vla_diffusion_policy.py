@@ -1,25 +1,41 @@
 """VLA Diffusion Policy Model."""
 
 import torch.nn as nn
-from .encoders import ImageEncoderTinyCNN, TextEncoderTinyGRU, StateEncoderMLP
+from .encoders import TextEncoderTinyGRU, StateEncoderMLP
 from .fusion import FusionMLP
 from .diffusion_head import DiffusionConfig, DiffusionPolicyHead
 
+from .vision.registry import VisionEncoderCfg, build_vision_encoder
+import models.vision
+
 
 class VLADiffusionPolicy(nn.Module):
-    def __init__(self, vocab_size, state_dim, action_dim,
-                 d_model=128, diffusion_T=16):
+    def __init__(
+        self,
+        vocab_size,
+        state_dim,
+        action_dim,
+        d_model=128,
+        diffusion_T=16,
+        vision_cfg: VisionEncoderCfg | None = None,
+    ):
         super().__init__()
-        self.img_encoder = ImageEncoderTinyCNN(d_model=d_model)
+
+        # notice how I removed `ImageEncoderTinyCNN` import and now we rely on registry.
+
+        if vision_cfg is None:
+            vision_cfg = VisionEncoderCfg(name="tinycnn", d_model=d_model)
+
+        # vision encoder outputs d_model
+        vision_cfg.d_model = d_model
+        self.vision_cfg = vision_cfg
+        self.img_encoder = build_vision_encoder(vision_cfg)
+
         self.txt_encoder = TextEncoderTinyGRU(vocab_size=vocab_size, d_word=64, d_model=d_model)
         self.state_encoder = StateEncoderMLP(state_dim=state_dim, d_model=d_model)
         self.fusion = FusionMLP(d_model=d_model)
 
-        cfg = DiffusionConfig(
-            T=diffusion_T,
-            action_dim=action_dim,
-            cond_dim=d_model,
-        )
+        cfg = DiffusionConfig(T=diffusion_T, action_dim=action_dim, cond_dim=d_model)
         self.diffusion_head = DiffusionPolicyHead(cfg)
 
     def encode_obs(self, image, text_tokens, state):
@@ -44,5 +60,4 @@ class VLADiffusionPolicy(nn.Module):
         returns: (B, action_dim)
         """
         cond = self.encode_obs(image, text_tokens, state)
-        actions = self.diffusion_head.sample(cond)
-        return actions
+        return self.diffusion_head.sample(cond)

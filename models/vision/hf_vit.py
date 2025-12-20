@@ -1,3 +1,4 @@
+# models/vision/hf_vit.py
 from __future__ import annotations
 from typing import Literal
 
@@ -5,7 +6,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
-from .registry import VisionEncoder, VisionEncoderCfg
+from .registry import VisionEncoder, VisionEncoderCfg, register_vision_encoder
 
 
 class HFViTVisionEncoder(VisionEncoder):
@@ -13,7 +14,7 @@ class HFViTVisionEncoder(VisionEncoder):
     HuggingFace Vision encoder wrapper (CLIP / SigLIP).
 
     Input:  x (B,3,H,W) float in [0,1] (or uint8 in [0,255])
-    Output: (B,D) pooled CLS token, optionally projected to cfg.d_model
+    Output: (B,D) pooled CLS token, projected to cfg.d_model if needed
     """
     def __init__(
         self,
@@ -24,7 +25,7 @@ class HFViTVisionEncoder(VisionEncoder):
         std: tuple[float, float, float],
     ):
         super().__init__(cfg)
-        self.cfg = cfg
+
         try:
             if hf_kind == "clip":
                 from transformers import CLIPVisionModel
@@ -40,26 +41,53 @@ class HFViTVisionEncoder(VisionEncoder):
             raise ImportError("Install transformers: pip install transformers") from e
 
         hidden = int(self.backbone.config.hidden_size)
-        out_dim = int(getattr(cfg, "d_model", hidden))
+        out_dim = int(cfg.d_model)
         self.proj = nn.Identity() if out_dim == hidden else nn.Linear(hidden, out_dim)
 
-        # buffers for normalize (1,3,1,1)
         self.register_buffer("mean", torch.tensor(mean, dtype=torch.float32).view(1, 3, 1, 1), persistent=False)
         self.register_buffer("std", torch.tensor(std, dtype=torch.float32).view(1, 3, 1, 1), persistent=False)
 
-        self.image_size = int(getattr(cfg, "image_size", getattr(self.backbone.config, "image_size", 224)))
+        self.image_size = int(cfg.image_size or getattr(self.backbone.config, "image_size", 224))
 
-        if bool(getattr(cfg, "freeze", False)):
+        # cfg has trainable, not freeze
+        if not cfg.trainable:
             for p in self.backbone.parameters():
                 p.requires_grad = False
 
-        def forward(self, x: torch.Tensor) -> torch.Tensor:
-            if x.dtype == torch.uint8: x = x.float() / 255.0
-            else: x = x.float()
-            if x.shape[-2:] != (self.image_size, self.image_size):
-                x = F.interpolate(x, size=(self.image_size, self.image_size), mode="bilinear", align_corners=False)
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.dtype == torch.uint8:
+            x = x.float() / 255.0
+        else:
+            x = x.float()
 
-            x = (x - self.mean) / self.std
-            out = self.backbone(pixel_values=x, return_dict=True).last_hidden_state
-            cls = out[:, 0]
-            return self.proj(cls)
+        if x.shape[-2:] != (self.image_size, self.image_size):
+            x = F.interpolate(x, size=(self.image_size, self.image_size), mode="bilinear", align_corners=False)
+
+        x = (x - self.mean) / self.std
+        out = self.backbone(pixel_values=x, return_dict=True).last_hidden_state  # (B, N, hidden)
+        cls = out[:, 0]
+        return self.proj(cls)
+
+
+@register_vision_encoder("hf_clip_vit")
+class HFCLIPViT(HFViTVisionEncoder):
+    def __init__(self, cfg: VisionEncoderCfg):
+        super().__init__(
+            cfg=cfg,
+            hf_kind="clip",
+            default_pretrained="openai/clip-vit-base-patch32",
+            mean=(0.48145466, 0.4578275, 0.40821073),
+            std=(0.26862954, 0.26130258, 0.27577711),
+        )
+
+
+@register_vision_encoder("hf_siglip_vit")
+class HFSiglipViT(HFViTVisionEncoder):
+    def __init__(self, cfg: VisionEncoderCfg):
+        super().__init__(
+            cfg=cfg,
+            hf_kind="siglip",
+            default_pretrained="google/siglip-base-patch16-224",
+            mean=(0.5, 0.5, 0.5),
+            std=(0.5, 0.5, 0.5),
+        )

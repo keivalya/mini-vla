@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Dict, Type, Optional, List
 
 import torch
-from torch.nn import nn
+import torch.nn as nn
 
 @dataclass
 class VisionEncoderCfg:
