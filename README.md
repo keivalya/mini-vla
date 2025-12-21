@@ -4,7 +4,10 @@
 
 </div>
 
-mini-VLA is a minimal, beginner-friendly Vision-Language-Action (VLA) model designed to show how modern robot policies can fuse images, text instructions, and robot states to produce continuous actions. NOTE: it is far from being production-ready!
+mini-VLA is a minimal, beginner-friendly Vision-Language-Action (VLA) model designed to show how modern robot policies can fuse images, text instructions, and robot states to produce continuous actions.
+
+> [!IMPORTANT]
+> it is far from being production-ready! Purpose? Education. Optimizations? Yes, I am developing them. Checkout other branches.
 
 <div align="center">
   <img src="./assets/corner2_push.gif" alt="push the object to the goal">
@@ -14,6 +17,11 @@ This project intentionally keeps the codebase small (~150 LOC for the core model
 - beginners can understand the complete VLA training and exec pipeline
 - researchers can rapidly prototype new ideas around this
 - students can learn diffusion-based action generation w/o heavy dependencies
+
+> [!TIP]
+> I recommend reading the following blogs to get started with mini-VLA implementation.
+> - [Building Vision-Language-Action Model from scratch (Basics)](https://open.substack.com/pub/keivalya/p/building-vision-language-action-from?utm_campaign=post-expanded-share&utm_medium=web)
+> - [Building VLA models from scratch — II (Math, Code, and Intuition)](https://medium.com/@keivalyap/building-vla-models-from-scratch-ii-0180020dbc85)
 
 This project is not meant to be state-of-the-art instead, it provides a clear, hackable template for understanding VLA design.
 
