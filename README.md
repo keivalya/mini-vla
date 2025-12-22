@@ -22,6 +22,7 @@ This project intentionally keeps the codebase small (~150 LOC for the core model
 > I recommend reading the following blogs to get started with mini-VLA implementation.
 > - [Building Vision-Language-Action Model from scratch (Basics)](https://open.substack.com/pub/keivalya/p/building-vision-language-action-from?utm_campaign=post-expanded-share&utm_medium=web)
 > - [Building VLA models from scratch — II (Math, Code, and Intuition)](https://medium.com/@keivalyap/building-vla-models-from-scratch-ii-0180020dbc85)
+> - [Upgrading mini-VLA with CLIP/SigLIP vision encoders](https://medium.com/@keivalyap/mini-vla-with-vision-encoders-f9ba8d8d2988)
 
 This project is not meant to be state-of-the-art instead, it provides a clear, hackable template for understanding VLA design.
 
