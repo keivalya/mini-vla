@@ -6,6 +6,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .action_expert.registry import ActionExpert, ActionExpertCfg, register_action_expert
+
 
 @dataclass
 class DiffusionConfig:
@@ -88,13 +90,22 @@ class ActionDenoiseModel(nn.Module):
         eps_pred = self.net(x)
         return eps_pred
 
-class DiffusionPolicyHead(nn.Module):
-    def __init__(self, cfg: DiffusionConfig):
-        super().__init__()
-        self.cfg = cfg
-        self.denoise_model = ActionDenoiseModel(cfg)
-        betas, alphas, alpha_bar = make_beta_schedule(cfg)
-        # register as buffers so they move with the module’s device
+@register_action_expert("diffusion")
+class DiffusionPolicyHead(ActionExpert):
+    def __init__(self, cfg: ActionExpertCfg):
+        super().__init__(cfg)
+        # Convert ActionExpertCfg to DiffusionConfig for internal use
+        diffusion_cfg = DiffusionConfig(
+            T=cfg.T,
+            beta_start=cfg.beta_start,
+            beta_end=cfg.beta_end,
+            action_dim=cfg.action_dim,
+            cond_dim=cfg.cond_dim,
+        )
+        self.diffusion_cfg = diffusion_cfg
+        self.denoise_model = ActionDenoiseModel(diffusion_cfg)
+        betas, alphas, alpha_bar = make_beta_schedule(diffusion_cfg)
+        # register as buffers so they move with the module's device
         self.register_buffer("betas", betas)
         self.register_buffer("alphas", alphas)
         self.register_buffer("alpha_bar", alpha_bar)
@@ -116,7 +127,7 @@ class DiffusionPolicyHead(nn.Module):
         """
         B = actions.size(0)
         device = actions.device
-        t = torch.randint(0, self.cfg.T, (B,), device=device) # uniform sampling t
+        t = torch.randint(0, self.diffusion_cfg.T, (B,), device=device) # uniform sampling t
         noise = torch.randn_like(actions)
         x_t = self.q_sample(actions, t, noise)  # noisy actions
         eps_pred = self.denoise_model(x_t, t, cond)
@@ -135,8 +146,8 @@ class DiffusionPolicyHead(nn.Module):
             B = n_samples
             cond = cond.expand(B, -1)
 
-        x_t = torch.randn(B, self.cfg.action_dim, device=cond.device)
-        for t_step in reversed(range(self.cfg.T)):
+        x_t = torch.randn(B, self.diffusion_cfg.action_dim, device=cond.device)
+        for t_step in reversed(range(self.diffusion_cfg.T)):
             t = torch.full((B,), t_step, device=cond.device, dtype=torch.long)
             eps_pred = self.denoise_model(x_t, t, cond)
             beta_t = self.betas[t_step]

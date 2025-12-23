@@ -8,6 +8,7 @@ import imageio.v2 as imageio
 
 from envs.metaworld_env import MetaWorldMT1Wrapper
 from models.vla_diffusion_policy import VLADiffusionPolicy
+from models.action_expert.registry import ActionExpertCfg
 from utils.tokenizer import SimpleTokenizer
 
 
@@ -67,11 +68,17 @@ def parse_args():
         default="videos",
         help="Directory to save videos (if --save-video is set)",
     )
+    parser.add_argument(
+        "--action-expert-name",
+        type=str,
+        default=None,
+        help="Override action expert name from checkpoint (diffusion | flow_matching)",
+    )
 
     return parser.parse_args()
 
 
-def load_model_and_tokenizer(checkpoint_path: str, device: torch.device):
+def load_model_and_tokenizer(checkpoint_path: str, device: torch.device, action_expert_name_override: str = None):
     ckpt = torch.load(checkpoint_path, map_location=device)
 
     vocab = ckpt["vocab"]
@@ -79,6 +86,24 @@ def load_model_and_tokenizer(checkpoint_path: str, device: torch.device):
     action_dim = ckpt["action_dim"]
     d_model = ckpt["d_model"]
     diffusion_T = ckpt["diffusion_T"]
+
+    # load action expert config
+    action_expert_cfg = None
+    if "action_expert_cfg" in ckpt:
+        action_expert_cfg = ActionExpertCfg(**ckpt["action_expert_cfg"])
+    
+    # allow CLI override
+    if action_expert_name_override is not None:
+        if action_expert_cfg is None:
+            # create default config if checkpoint doesn't have it
+            action_expert_cfg = ActionExpertCfg(
+                name=action_expert_name_override,
+                action_dim=action_dim,
+                cond_dim=d_model,
+                T=diffusion_T,
+            )
+        else:
+            action_expert_cfg.name = action_expert_name_override
 
     vocab_size = max(vocab.values()) + 1
 
@@ -88,6 +113,7 @@ def load_model_and_tokenizer(checkpoint_path: str, device: torch.device):
         action_dim=action_dim,
         d_model=d_model,
         diffusion_T=diffusion_T,
+        action_expert_cfg=action_expert_cfg,
     ).to(device)
 
     model.load_state_dict(ckpt["model_state_dict"])
@@ -105,7 +131,7 @@ def main():
 
     # load model + tokenizer
     print(f"[test] Loading checkpoint from {args.checkpoint}")
-    model, tokenizer = load_model_and_tokenizer(args.checkpoint, device)
+    model, tokenizer = load_model_and_tokenizer(args.checkpoint, device, action_expert_name_override=args.action_expert_name)
 
     # encode instruction
     instr_tokens = tokenizer.encode(args.instruction)
@@ -116,7 +142,7 @@ def main():
         env_name=args.env_name,
         seed=args.seed,
         render_mode="rgb_array",
-        camera_name="topview",
+        camera_name="corner",
     )
 
     print(f"[test] Meta-World MT1 env: {args.env_name}")
