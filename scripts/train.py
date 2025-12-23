@@ -7,6 +7,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 
 from models.vla_diffusion_policy import VLADiffusionPolicy
+from models.action_expert.registry import ActionExpertCfg
 
 
 class TrainingDataset(Dataset):
@@ -54,6 +55,11 @@ def parse_args():
                         default="checkpoints/model.pt")
     parser.add_argument("--device", type=str, default="cuda",
                         help="'cuda' or 'cpu'")
+    
+    # action expert command-line arguments
+    parser.add_argument("--action-expert-name", type=str, default="diffusion",
+                        help="diffusion | flow_matching")
+    
     return parser.parse_args()
 
 
@@ -67,12 +73,20 @@ def main():
     state_dim = dataset.states.shape[1]
     action_dim = dataset.actions.shape[1]
 
+    action_expert_cfg = ActionExpertCfg(
+        name=args.action_expert_name,
+        action_dim=action_dim,
+        cond_dim=args.d_model,
+        T=args.diffusion_T,
+    )
+
     model = VLADiffusionPolicy(
         vocab_size=vocab_size,
         state_dim=state_dim,
         action_dim=action_dim,
         d_model=args.d_model,
-        diffusion_T=args.diffusion_T
+        diffusion_T=args.diffusion_T,
+        action_expert_cfg=action_expert_cfg,
     ).to(device)
 
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
@@ -107,6 +121,13 @@ def main():
             "action_dim": action_dim,
             "d_model": args.d_model,
             "diffusion_T": args.diffusion_T,
+            # save action expert config
+            "action_expert_cfg": {
+                "name": action_expert_cfg.name,
+                "action_dim": action_expert_cfg.action_dim,
+                "cond_dim": action_expert_cfg.cond_dim,
+                "T": action_expert_cfg.T,
+            },
         },
         args.save_path,
     )
