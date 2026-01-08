@@ -3,7 +3,10 @@
 import torch.nn as nn
 from .encoders import TextEncoderTinyGRU, StateEncoderMLP
 from .fusion import FusionMLP
+
+# action heads
 from .diffusion_head import DiffusionConfig, DiffusionPolicyHead
+from .flow_matching_head import FlowMatchingConfig, FlowMatchingPolicyHead
 
 from .vision.registry import VisionEncoderCfg, build_vision_encoder
 import models.vision
@@ -18,6 +21,7 @@ class VLADiffusionPolicy(nn.Module):
         d_model=128,
         diffusion_T=16,
         vision_cfg: VisionEncoderCfg | None = None,
+        use_flow_matching=False,
     ):
         super().__init__()
 
@@ -35,8 +39,14 @@ class VLADiffusionPolicy(nn.Module):
         self.state_encoder = StateEncoderMLP(state_dim=state_dim, d_model=d_model)
         self.fusion = FusionMLP(d_model=d_model)
 
-        cfg = DiffusionConfig(T=diffusion_T, action_dim=action_dim, cond_dim=d_model)
-        self.diffusion_head = DiffusionPolicyHead(cfg)
+        # decide which action-head to use
+        self.use_flow_matching = use_flow_matching
+        if self.use_flow_matching:
+            fm_cfg = FlowMatchingConfig(action_dim=action_dim, cond_dim=d_model)
+            self.policy_head = FlowMatchingPolicyHead(fm_cfg)
+        else:
+            cfg = DiffusionConfig(T=diffusion_T, action_dim=action_dim, cond_dim=d_model)
+            self.policy_head = DiffusionPolicyHead(cfg)
 
     def encode_obs(self, image, text_tokens, state):
         img_token = self.img_encoder(image)  # (B, d_model)
@@ -50,7 +60,7 @@ class VLADiffusionPolicy(nn.Module):
         Compute the loss of the diffusion policy head given the image, text tokens, state, and actions.
         """
         cond = self.encode_obs(image, text_tokens, state)
-        return self.diffusion_head.loss(actions, cond)
+        return self.policy_head.loss(actions, cond)
 
     def act(self, image, text_tokens, state):
         """
@@ -60,4 +70,4 @@ class VLADiffusionPolicy(nn.Module):
         returns: (B, action_dim)
         """
         cond = self.encode_obs(image, text_tokens, state)
-        return self.diffusion_head.sample(cond)
+        return self.policy_head.sample(cond)

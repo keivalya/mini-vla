@@ -86,6 +86,8 @@ def load_model_and_tokenizer(checkpoint_path: str, device: torch.device):
     if "vision_cfg" in ckpt:
         vision_cfg = VisionEncoderCfg(**ckpt["vision_cfg"])
 
+    use_flow_matching = ckpt.get("use_flow_matching", False)
+
     vocab_size = max(vocab.values()) + 1
 
     model = VLADiffusionPolicy(
@@ -95,6 +97,7 @@ def load_model_and_tokenizer(checkpoint_path: str, device: torch.device):
         d_model=d_model,
         diffusion_T=diffusion_T,
         vision_cfg=vision_cfg,
+        use_flow_matching=use_flow_matching,
     ).to(device)
 
     model.load_state_dict(ckpt["model_state_dict"])

@@ -65,6 +65,8 @@ def parse_args():
                     help="If set, HF backbone is trainable")
     parser.add_argument("--vision-image-size", type=int, default=None,
                     help="Override vision encoder image size (e.g. 224)")
+    parser.add_argument("--use-flow-matching", action="store_true", default=False,
+                    help="If set, use flow-matching instead of diffusion")
     return parser.parse_args()
 
 
@@ -93,7 +95,8 @@ def main():
         action_dim=action_dim,
         d_model=args.d_model,
         diffusion_T=args.diffusion_T,
-        vision_cfg=vision_cfg, # vision encoder config
+        vision_cfg=vision_cfg,
+        use_flow_matching=args.use_flow_matching, # flow-matching / diffusion
     ).to(device)
 
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
@@ -128,6 +131,7 @@ def main():
             "action_dim": action_dim,
             "d_model": args.d_model,
             "diffusion_T": args.diffusion_T,
+            "use_flow_matching": args.use_flow_matching,
             # save vision encoder config
             "vision_cfg": {
                 "name": vision_cfg.name,
