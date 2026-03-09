@@ -31,6 +31,12 @@ The mini-VLA model core is mainly four files: [models/encoders.py](models/encode
 Additionally, I provide scripts such as [scripts/collect_data.py](scripts/collect_data.py) to collect data using an expert policy, [scripts/train.py](scripts/train.py) to train the VLA on the collected data, and [scripts/test.py](scripts/test.py) to test VLA-Diffusion Policy's performance (+ save videos).
 
 
+# Explainer video
+
+[Building a Robot's Brain](https://github.com/user-attachments/assets/71f12e39-cefb-4bd5-8da0-ff588e21c709)
+
+I love how NotebookLM helps to create such a detailed tutorial.
+
 ## Getting started
 
 Create (or activate) a conda environment
