@@ -28,6 +28,18 @@ def parse_args():
         help="Meta-World MT1 task name, e.g. push-v3, reach-v3, pick-place-v3",
     )
     parser.add_argument(
+        "--policy-camera-name",
+        type=str,
+        default="topview",
+        help="Camera used for policy observations at inference time",
+    )
+    parser.add_argument(
+        "--video-camera-name",
+        type=str,
+        default=None,
+        help="Optional camera used only for saved videos; defaults to the policy camera",
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=42,
@@ -126,11 +138,21 @@ def main():
         env_name=args.env_name,
         seed=args.seed,
         render_mode="rgb_array",
-        camera_name="topview",
+        camera_name=args.policy_camera_name,
     )
+    video_camera_name = args.video_camera_name or args.policy_camera_name
+    video_env = None
+    if args.save_video and video_camera_name != args.policy_camera_name:
+        video_env = MetaWorldMT1Wrapper(
+            env_name=args.env_name,
+            seed=args.seed,
+            render_mode="rgb_array",
+            camera_name=video_camera_name,
+        )
 
     print(f"[test] Meta-World MT1 env: {args.env_name}")
     print(f"[test] state_dim={env.state_dim}, action_dim={env.action_dim}, obs_shape={env.obs_shape}")
+    print(f"[test] policy_camera={args.policy_camera_name}, video_camera={video_camera_name}")
 
     if args.save_video:
         os.makedirs(args.video_dir, exist_ok=True)
@@ -141,7 +163,17 @@ def main():
         step = 0
         ep_reward = 0.0
 
-        frames = [img.copy()]
+        if video_env is not None:
+            try:
+                video_env.sync_from(env)
+                frames = [video_env.render().copy()]
+            except AttributeError:
+                print("[test] Warning: env state sync is unavailable; falling back to policy camera for video.")
+                video_env.close()
+                video_env = None
+                frames = [img.copy()]
+        else:
+            frames = [img.copy()]
 
         done = False
         while not done and step < args.max_steps:
@@ -161,7 +193,11 @@ def main():
             ep_reward += reward
             step += 1
 
-            frames.append(img.copy())
+            if video_env is not None:
+                video_env.sync_from(env)
+                frames.append(video_env.render().copy())
+            else:
+                frames.append(img.copy())
 
         print(f"[test] Episode {ep+1}/{args.episodes}: reward={ep_reward:.3f}, steps={step}")
 
@@ -174,6 +210,8 @@ def main():
             print(f"[test] Saved video to {video_path}")
 
     env.close()
+    if video_env is not None:
+        video_env.close()
     print("[test] Done.")
 
 
