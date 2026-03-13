@@ -1,13 +1,17 @@
-# models/flow_matching_head.py
+"""Flow-matching policy head for action generation."""
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from dataclasses import dataclass
 
+
+@dataclass
 class FlowMatchingConfig:
-    def __init__(self, action_dim, cond_dim, t_embed_dim=32):
-        self.action_dim = action_dim
-        self.cond_dim = cond_dim
-        self.t_embed_dim = t_embed_dim
+    action_dim: int
+    cond_dim: int
+    t_embed_dim: int = 32
+    sample_steps: int = 32
 
 class SinusoidalTime(nn.Module):
     """This is kept same as the diffusion time embedding."""
@@ -57,30 +61,36 @@ class FlowMatchingPolicyHead(nn.Module):
 
     def loss(self, actions, cond):
         """
-        Conditional flow matching loss:
-        Compare predicted velocity vs ideal velocity field - simplified for supervised case.
+        Conditional flow matching with a linear interpolation path.
+
+        We sample a source point x_0 ~ N(0, I), set x_1 to the demonstrated
+        action, and train the model to predict the constant velocity field
+        along x_t = (1 - t) * x_0 + t * x_1.
         """
         B = actions.size(0)
-        # uniform random t in [0,1]
         t = torch.rand(B, device=actions.device)
-        # construct noisy sample
-        noise = torch.randn_like(actions)
-        x_t = actions + t.unsqueeze(-1) * noise
-        # ideal velocity: here approximate as (actions - x_t) for simplicity
-        ideal_v = (actions - x_t) / (t.unsqueeze(-1) + 1e-8)
+
+        x_0 = torch.randn_like(actions)
+        t_expanded = t.unsqueeze(-1)
+        x_t = (1.0 - t_expanded) * x_0 + t_expanded * actions
+        target_v = actions - x_0
+
         v_pred = self.model(x_t, t, cond)
-        return F.mse_loss(v_pred, ideal_v)
+        return F.mse_loss(v_pred, target_v)
 
     @torch.no_grad()
     def sample(self, cond, n_samples=None):
         B = cond.size(0) if n_samples is None else n_samples
-        cond = cond.expand(B, -1)
-        # start from random noise
+        if cond.size(0) != B:
+            cond = cond.expand(B, -1)
+
+        # Start at the source distribution and integrate forward to t = 1.
         x_t = torch.randn(B, self.cfg.action_dim, device=cond.device)
-        # deterministic integration: Euler step
-        timesteps = torch.linspace(1, 0, steps=10, device=cond.device)
-        for t in timesteps:
-            t_batch = torch.full((B,), t, device=cond.device)
-            v = self.model(x_t, t_batch, cond)
-            x_t = x_t + v * (timesteps[1] - timesteps[0])
+        dt = 1.0 / self.cfg.sample_steps
+
+        for step in range(self.cfg.sample_steps):
+            t = torch.full((B,), step * dt, device=cond.device)
+            v = self.model(x_t, t, cond)
+            x_t = x_t + v * dt
+
         return x_t
