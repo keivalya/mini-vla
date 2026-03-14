@@ -12,6 +12,25 @@ from utils.tokenizer import SimpleTokenizer
 from models.vision.registry import VisionEncoderCfg
 
 
+def rotate_frame(frame: np.ndarray, degrees: int) -> np.ndarray:
+    if degrees % 360 == 0:
+        return frame
+    if degrees % 90 != 0:
+        raise ValueError(f"Rotation must be a multiple of 90 degrees, got {degrees}")
+    k = (degrees // 90) % 4
+    return np.rot90(frame, k=k).copy()
+
+
+def resolve_video_rotation(policy_camera_name: str, video_camera_name: str, requested_rotation: int | None) -> int:
+    if requested_rotation is not None:
+        return requested_rotation
+    # Showcase camera captures in this stack are typically upside down relative
+    # to the policy view, while the policy camera should stay untouched.
+    if video_camera_name != policy_camera_name:
+        return 180
+    return 0
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Test VLA Diffusion Policy on Meta-World MT1")
 
@@ -80,6 +99,12 @@ def parse_args():
         default="videos",
         help="Directory to save videos (if --save-video is set)",
     )
+    parser.add_argument(
+        "--video-rotate",
+        type=int,
+        default=None,
+        help="Optional override to rotate saved video frames by 0, 90, 180, or 270 degrees",
+    )
 
     return parser.parse_args()
 
@@ -141,6 +166,11 @@ def main():
         camera_name=args.policy_camera_name,
     )
     video_camera_name = args.video_camera_name or args.policy_camera_name
+    video_rotation = resolve_video_rotation(
+        policy_camera_name=args.policy_camera_name,
+        video_camera_name=video_camera_name,
+        requested_rotation=args.video_rotate,
+    )
     video_env = None
     if args.save_video and video_camera_name != args.policy_camera_name:
         video_env = MetaWorldMT1Wrapper(
@@ -153,6 +183,7 @@ def main():
     print(f"[test] Meta-World MT1 env: {args.env_name}")
     print(f"[test] state_dim={env.state_dim}, action_dim={env.action_dim}, obs_shape={env.obs_shape}")
     print(f"[test] policy_camera={args.policy_camera_name}, video_camera={video_camera_name}")
+    print(f"[test] video_rotate={video_rotation}")
 
     if args.save_video:
         os.makedirs(args.video_dir, exist_ok=True)
@@ -166,14 +197,14 @@ def main():
         if video_env is not None:
             try:
                 video_env.sync_from(env)
-                frames = [video_env.render().copy()]
+                frames = [rotate_frame(video_env.render().copy(), video_rotation)]
             except AttributeError:
                 print("[test] Warning: env state sync is unavailable; falling back to policy camera for video.")
                 video_env.close()
                 video_env = None
-                frames = [img.copy()]
+                frames = [rotate_frame(img.copy(), video_rotation)]
         else:
-            frames = [img.copy()]
+            frames = [rotate_frame(img.copy(), video_rotation)]
 
         done = False
         while not done and step < args.max_steps:
@@ -195,9 +226,9 @@ def main():
 
             if video_env is not None:
                 video_env.sync_from(env)
-                frames.append(video_env.render().copy())
+                frames.append(rotate_frame(video_env.render().copy(), video_rotation))
             else:
-                frames.append(img.copy())
+                frames.append(rotate_frame(img.copy(), video_rotation))
 
         print(f"[test] Episode {ep+1}/{args.episodes}: reward={ep_reward:.3f}, steps={step}")
 

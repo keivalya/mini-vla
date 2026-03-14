@@ -109,8 +109,10 @@ Meaning of the camera flags:
 
 - `--policy-camera-name`: camera used to render the image that goes into the VLA
 - `--video-camera-name`: camera used only for the saved video
+- `--video-rotate`: optional override to rotate saved video frames by `0`, `90`, `180`, or `270` degrees
 
 If `--video-camera-name` is omitted, the saved video uses the same camera as the policy.
+By default, showcase videos recorded from a different camera than the policy camera are automatically rotated by `180` degrees.
 
 ## 5. Camera Recommendations
 
