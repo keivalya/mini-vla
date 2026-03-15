@@ -22,6 +22,8 @@ class MetaWorldMT1Wrapper:
         obs, _ = self.env.reset()
         self.state_dim = self._extract_state(obs).shape[0]
         self.action_dim = self.env.action_space.shape[0]
+        self.action_low = np.asarray(self.env.action_space.low, dtype=np.float32)
+        self.action_high = np.asarray(self.env.action_space.high, dtype=np.float32)
         self.obs_shape = self._get_image().shape
 
     def _extract_state(self, obs):
