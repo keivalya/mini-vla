@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from dataclasses import dataclass
+from .action_head_utils import ResidualActionMLP
 
 
 @dataclass
@@ -12,6 +13,7 @@ class FlowMatchingConfig:
     cond_dim: int
     t_embed_dim: int = 32
     sample_steps: int = 32
+    hidden_dim: int = 256
 
 class SinusoidalTime(nn.Module):
     """This is kept same as the diffusion time embedding."""
@@ -35,16 +37,14 @@ class FlowMatchingModel(nn.Module):
     (hence, the code follows the same structure)
     """
 
-    def __init__(self, cfg: FlowMatchingConfig, hidden_dim=128):
+    def __init__(self, cfg: FlowMatchingConfig):
         super().__init__()
         self.time_emb = SinusoidalTime(cfg.t_embed_dim)
         in_dim = cfg.action_dim + cfg.t_embed_dim + cfg.cond_dim
-        self.net = nn.Sequential(
-            nn.Linear(in_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, cfg.action_dim),
+        self.net = ResidualActionMLP(
+            in_dim=in_dim,
+            out_dim=cfg.action_dim,
+            hidden_dim=cfg.hidden_dim,
         )
 
     def forward(self, x_t, t, cond):
