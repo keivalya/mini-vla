@@ -1,5 +1,6 @@
 """VLA Diffusion Policy Model."""
 
+import torch
 import torch.nn as nn
 from .encoders import TextEncoderTinyGRU, StateEncoderMLP
 from .fusion import FusionMLP
@@ -22,6 +23,8 @@ class VLADiffusionPolicy(nn.Module):
         diffusion_T=16,
         vision_cfg: VisionEncoderCfg | None = None,
         use_flow_matching=False,
+        obs_history_len=1,
+        action_head_hidden_dim=256,
     ):
         super().__init__()
 
@@ -34,22 +37,42 @@ class VLADiffusionPolicy(nn.Module):
         vision_cfg.d_model = d_model
         self.vision_cfg = vision_cfg
         self.img_encoder = build_vision_encoder(vision_cfg)
+        self.obs_history_len = obs_history_len
+        if self.obs_history_len > 1:
+            self.img_history_proj = nn.Linear(obs_history_len * d_model, d_model)
+            self.img_history_ln = nn.LayerNorm(d_model)
 
         self.txt_encoder = TextEncoderTinyGRU(vocab_size=vocab_size, d_word=64, d_model=d_model)
-        self.state_encoder = StateEncoderMLP(state_dim=state_dim, d_model=d_model)
+        self.state_encoder = StateEncoderMLP(state_dim=state_dim * obs_history_len, d_model=d_model)
         self.fusion = FusionMLP(d_model=d_model)
 
         # decide which action-head to use
         self.use_flow_matching = use_flow_matching
         if self.use_flow_matching:
-            fm_cfg = FlowMatchingConfig(action_dim=action_dim, cond_dim=d_model)
+            fm_cfg = FlowMatchingConfig(
+                action_dim=action_dim,
+                cond_dim=d_model,
+                hidden_dim=action_head_hidden_dim,
+            )
             self.policy_head = FlowMatchingPolicyHead(fm_cfg)
         else:
-            cfg = DiffusionConfig(T=diffusion_T, action_dim=action_dim, cond_dim=d_model)
+            cfg = DiffusionConfig(
+                T=diffusion_T,
+                action_dim=action_dim,
+                cond_dim=d_model,
+                hidden_dim=action_head_hidden_dim,
+            )
             self.policy_head = DiffusionPolicyHead(cfg)
 
     def encode_obs(self, image, text_tokens, state):
-        img_token = self.img_encoder(image)  # (B, d_model)
+        if image.dim() == 5:
+            bsz, history_len, channels, height, width = image.shape
+            image = image.view(bsz * history_len, channels, height, width)
+            img_token = self.img_encoder(image).view(bsz, history_len, -1)
+            img_token = self.img_history_proj(img_token.flatten(start_dim=1))
+            img_token = self.img_history_ln(img_token)
+        else:
+            img_token = self.img_encoder(image)  # (B, d_model)
         txt_token = self.txt_encoder(text_tokens)  # (B, d_model)
         state_token = self.state_encoder(state)  # (B, d_model)
         fused_context = self.fusion(img_token, txt_token, state_token)
