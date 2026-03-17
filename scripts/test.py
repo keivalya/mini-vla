@@ -133,7 +133,7 @@ def parse_args():
 
 
 def load_model_and_tokenizer(checkpoint_path: str, device: torch.device):
-    ckpt = torch.load(checkpoint_path, map_location=device)
+    ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
 
     vocab = ckpt["vocab"]
     state_dim = ckpt["state_dim"]
