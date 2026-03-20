@@ -51,6 +51,7 @@ def main():
     states = []
     actions = []
     texts = []
+    episode_ids = []
 
     # fixed instruction for this dataset
     instruction = args.instruction
@@ -72,6 +73,7 @@ def main():
             states.append(state.copy())
             actions.append(np.asarray(action, dtype=np.float32).copy())
             texts.append(instruction)
+            episode_ids.append(ep)
 
             # step env
             obs, reward, truncate, terminate, info = env.step(action)
@@ -89,6 +91,7 @@ def main():
     images = np.stack(images, axis=0)   # (N, H, W, 3)
     states = np.stack(states, axis=0)   # (N, state_dim)
     actions = np.stack(actions, axis=0) # (N, action_dim)
+    episode_ids = np.asarray(episode_ids, dtype=np.int64)
 
     # tokenize instructions
     tokenizer = SimpleTokenizer(vocab=None)
@@ -106,6 +109,7 @@ def main():
         actions=actions,
         text_ids=text_ids,
         vocab=tokenizer.vocab,
+        episode_ids=episode_ids,
     )
 
     print("Saved Meta-World push dataset to", args.output_path)
@@ -113,6 +117,7 @@ def main():
     print("  states:", states.shape)
     print("  actions:", actions.shape)
     print("  text_ids:", text_ids.shape)
+    print("  episode_ids:", episode_ids.shape)
 
 
 if __name__ == "__main__":

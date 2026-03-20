@@ -17,10 +17,13 @@ class MetaWorldMT1Wrapper:
             camera_name=camera_name
         )
         self.render_mode = render_mode
+        self.camera_name = camera_name
 
         obs, _ = self.env.reset()
         self.state_dim = self._extract_state(obs).shape[0]
         self.action_dim = self.env.action_space.shape[0]
+        self.action_low = np.asarray(self.env.action_space.low, dtype=np.float32)
+        self.action_high = np.asarray(self.env.action_space.high, dtype=np.float32)
         self.obs_shape = self._get_image().shape
 
     def _extract_state(self, obs):
@@ -49,10 +52,44 @@ class MetaWorldMT1Wrapper:
             state = obs
         return np.asarray(state, dtype=np.float32)
 
-    def _get_image(self):
-        img = self.env.render()
+    def _get_image(self, camera_name=None):
+        if camera_name is None or camera_name == self.camera_name:
+            img = self.env.render()
+        else:
+            try:
+                img = self.env.render(camera_name=camera_name)
+            except TypeError:
+                # Older wrappers may only support the camera selected at env creation.
+                img = self.env.render()
         img = img.astype(np.uint8)
         return img
+
+    def render(self, camera_name=None):
+        return self._get_image(camera_name=camera_name)
+
+    def _get_stateful_env(self):
+        for candidate in (self.env, getattr(self.env, "unwrapped", None)):
+            if candidate is not None:
+                has_get = hasattr(candidate, "get_env_state")
+                has_set = hasattr(candidate, "set_env_state")
+                if has_get and has_set:
+                    return candidate
+        return None
+
+    def get_env_state(self):
+        stateful_env = self._get_stateful_env()
+        if stateful_env is None:
+            raise AttributeError("Environment does not expose get_env_state/set_env_state")
+        return stateful_env.get_env_state()
+
+    def set_env_state(self, state):
+        stateful_env = self._get_stateful_env()
+        if stateful_env is None:
+            raise AttributeError("Environment does not expose get_env_state/set_env_state")
+        stateful_env.set_env_state(state)
+
+    def sync_from(self, other):
+        self.set_env_state(other.get_env_state())
 
     def reset(self, seed=None):
         obs, info = self.env.reset(seed=seed)

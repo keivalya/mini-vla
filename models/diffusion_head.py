@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from .action_head_utils import ResidualActionMLP
 
 
 @dataclass
@@ -14,6 +15,7 @@ class DiffusionConfig:
     beta_end: float = 1e-2
     action_dim: int = 4
     cond_dim: int = 128 # conditional input dim
+    hidden_dim: int = 256
 
 
 def make_beta_schedule(cfg: DiffusionConfig):
@@ -62,19 +64,16 @@ class ActionDenoiseModel(nn.Module):
     t:     (B,) integer timestep
     cond:  (B, cond_dim) fused VLA token
     """
-    def __init__(self, cfg: DiffusionConfig, time_emb_dim=32, hidden_dim=128):
+    def __init__(self, cfg: DiffusionConfig, time_emb_dim=32):
         super().__init__()
         self.cfg = cfg
         self.time_emb = SinusoidalTimeEmbedding(time_emb_dim)
 
         in_dim = cfg.action_dim + time_emb_dim + cfg.cond_dim
-
-        self.net = nn.Sequential(
-            nn.Linear(in_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, cfg.action_dim),
+        self.net = ResidualActionMLP(
+            in_dim=in_dim,
+            out_dim=cfg.action_dim,
+            hidden_dim=cfg.hidden_dim,
         )
 
     def forward(self, x_t, t, cond):
